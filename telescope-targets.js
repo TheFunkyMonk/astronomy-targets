@@ -324,50 +324,28 @@ async function main() {
 	const telescope = telescopeCapabilities[config.telescopeLevel];
 	const date = getCurrentDate();
 
-	console.log('='.repeat(70));
-	console.log('TELESCOPE VIEWING TARGETS');
-	console.log('='.repeat(70));
-	console.log(`Date: ${date}`);
-	console.log(`Location: ${config.latitude}, ${config.longitude} (${config.elevation}m elevation)`);
-	console.log(`Telescope: ${telescope.description}`);
-	console.log(`Time Range: ${config.eveningStartHour}:00 - ${config.eveningEndHour}:00`);
-	console.log('='.repeat(70));
-	console.log();
+	console.log('TELESCOPE VIEWING - ' + date);
+	console.log('='.repeat(50));
 
 	// Get weather conditions first
-	console.log('Checking weather conditions...\n');
 	let weatherConditions = null;
 
 	try {
 		const weatherData = await getWeatherConditions();
 		weatherConditions = interpretWeatherConditions(weatherData);
 
-		// Display weather summary
-		console.log('🌤️  WEATHER CONDITIONS FOR TONIGHT:');
-		console.log('-'.repeat(70));
-		console.log(`Overall Quality: ${weatherConditions.quality.toUpperCase()}`);
-		console.log(`Cloud Cover: ${weatherConditions.avgCloudCover}/9 (1=clear, 9=overcast)`);
-		console.log(`Atmospheric Seeing: ${weatherConditions.avgSeeing}/8 (higher is better)`);
-		console.log(`Transparency: ${weatherConditions.avgTransparency}/8 (higher is better)`);
-		if (weatherConditions.hasRain) {
-			console.log('⚠️  Precipitation: Expected');
-		}
-		console.log(`Conditions: ${weatherConditions.reasons.join(', ')}`);
-		console.log();
+		// Display concise weather summary
+		const statusIcon = weatherConditions.worthObserving ? '✅' : '⚠️';
+		const recommendation = weatherConditions.worthObserving ? 'GO OUTSIDE' : 'NOT RECOMMENDED';
 
-		if (!weatherConditions.worthObserving) {
-			console.log('⚠️  VIEWING RECOMMENDATION: NOT RECOMMENDED');
-			console.log('Tonight\'s weather conditions are not suitable for telescope viewing.');
-			console.log('However, here\'s what would be visible in the sky if conditions improve:');
-		} else {
-			console.log('✅ VIEWING RECOMMENDATION: GO OUTSIDE!');
-			console.log('Weather conditions are favorable for telescope viewing tonight.');
-		}
-		console.log('='.repeat(70));
+		console.log(`${statusIcon} CONDITIONS: ${recommendation}`);
+		console.log(`Quality: ${weatherConditions.quality.toUpperCase()} | Clouds: ${weatherConditions.avgCloudCover}/9 | Seeing: ${weatherConditions.avgSeeing}/8`);
+		console.log('='.repeat(50));
 		console.log();
 	} catch (error) {
-		console.log('⚠️  Warning: Could not fetch weather data:', error.message);
-		console.log('Continuing with celestial object analysis...\n');
+		console.log('⚠️  Weather data unavailable');
+		console.log('='.repeat(50));
+		console.log();
 	}
 
 	// Generate hours to check
@@ -381,7 +359,6 @@ async function main() {
 	}
 
 	// Collect data for all hours
-	console.log('Analyzing celestial positions throughout the evening...\n');
 	const targetsByName = new Map();
 
 	for (const hour of hours) {
@@ -423,15 +400,7 @@ async function main() {
 		const visibleHours = data.hourlyData.filter(h => h.altitude > 0);
 
 		if (visibleHours.length === 0) {
-			// Never visible during the evening
-			nightSummary.push({
-				name: data.name,
-				bestRating: 'not-visible',
-				reason: 'Below horizon all evening',
-				magnitude: data.magnitude,
-				constellation: data.constellation
-			});
-			continue;
+			continue; // Skip targets not visible
 		}
 
 		// Find peak altitude
@@ -445,18 +414,21 @@ async function main() {
 			ratingPriority[current.rating] < ratingPriority[best.rating] ? current : best
 		);
 
-		nightSummary.push({
-			name: data.name,
-			bestRating: bestRatingHour.rating,
-			reason: bestRatingHour.reason,
-			magnitude: data.magnitude,
-			constellation: data.constellation,
-			peakAltitude: peakHour.altitude,
-			peakHour: peakHour.hour,
-			peakAzimuth: peakHour.azimuth,
-			visibleHours: visibleHours.length,
-			totalHours: data.hourlyData.length
-		});
+		// Only include targets that are at least "fair" quality
+		if (ratingPriority[bestRatingHour.rating] <= 2) {
+			nightSummary.push({
+				name: data.name,
+				bestRating: bestRatingHour.rating,
+				reason: bestRatingHour.reason,
+				magnitude: data.magnitude,
+				constellation: data.constellation,
+				peakAltitude: peakHour.altitude,
+				peakHour: peakHour.hour,
+				peakAzimuth: peakHour.azimuth,
+				visibleHours: visibleHours.length,
+				totalHours: data.hourlyData.length
+			});
+		}
 	}
 
 	// Sort by rating priority first, then by viewability score
@@ -472,88 +444,45 @@ async function main() {
 	const excellent = nightSummary.filter(t => t.bestRating === 'excellent');
 	const good = nightSummary.filter(t => t.bestRating === 'good');
 	const fair = nightSummary.filter(t => t.bestRating === 'fair');
-	const challenging = nightSummary.filter(t => t.bestRating === 'poor' || t.bestRating === 'too-faint');
-	const notVisible = nightSummary.filter(t => t.bestRating === 'not-visible');
 
 	if (excellent.length > 0) {
 		console.log('⭐ EXCELLENT TARGETS:');
-		console.log('-'.repeat(70));
+		console.log('-'.repeat(50));
 		excellent.forEach(t => {
 			const peakTime = formatHourDisplay(t.peakHour);
-			console.log(`\n${t.name}`);
-			console.log(`  Best viewing: ${peakTime} (${t.peakAltitude.toFixed(1)}° altitude)`);
-			console.log(`  Direction: ${getDirection(t.peakAzimuth)} (${t.peakAzimuth.toFixed(1)}°)`);
-			console.log(`  Magnitude: ${t.magnitude?.toFixed(2) || 'N/A'}`);
-			console.log(`  Constellation: ${t.constellation}`);
-			console.log(`  Visible: ${t.visibleHours}/${t.totalHours} hours checked`);
-			console.log(`  Why it's great: ${t.reason}`);
+			console.log(`${t.name} - ${peakTime} at ${t.peakAltitude.toFixed(0)}° ${getDirection(t.peakAzimuth)}`);
 		});
 		console.log();
 	}
 
 	if (good.length > 0) {
-		console.log('\n✨ GOOD TARGETS:');
-		console.log('-'.repeat(70));
+		console.log('✨ GOOD TARGETS:');
+		console.log('-'.repeat(50));
 		good.forEach(t => {
 			const peakTime = formatHourDisplay(t.peakHour);
-			console.log(`\n${t.name}`);
-			console.log(`  Best viewing: ${peakTime} (${t.peakAltitude.toFixed(1)}° altitude)`);
-			console.log(`  Direction: ${getDirection(t.peakAzimuth)} (${t.peakAzimuth.toFixed(1)}°)`);
-			console.log(`  Magnitude: ${t.magnitude?.toFixed(2) || 'N/A'}`);
-			console.log(`  Visible: ${t.visibleHours}/${t.totalHours} hours checked`);
-			console.log(`  Note: ${t.reason}`);
+			console.log(`${t.name} - ${peakTime} at ${t.peakAltitude.toFixed(0)}° ${getDirection(t.peakAzimuth)}`);
 		});
 		console.log();
 	}
 
 	if (fair.length > 0) {
-		console.log('\n💫 FAIR TARGETS:');
-		console.log('-'.repeat(70));
+		console.log('💫 FAIR TARGETS:');
+		console.log('-'.repeat(50));
 		fair.forEach(t => {
 			const peakTime = formatHourDisplay(t.peakHour);
-			console.log(`\n${t.name}`);
-			console.log(`  Best viewing: ${peakTime} (${t.peakAltitude.toFixed(1)}° altitude)`);
-			console.log(`  Magnitude: ${t.magnitude?.toFixed(2) || 'N/A'}`);
-			console.log(`  Note: ${t.reason}`);
+			console.log(`${t.name} - ${peakTime} at ${t.peakAltitude.toFixed(0)}° ${getDirection(t.peakAzimuth)}`);
 		});
 		console.log();
 	}
 
-	if (challenging.length > 0) {
-		console.log('\n🔭 CHALLENGING (not recommended for your telescope):');
-		console.log('-'.repeat(70));
-		challenging.forEach(t => {
-			console.log(`  ${t.name}: ${t.reason}`);
-		});
-		console.log();
-	}
-
-	if (notVisible.length > 0) {
-		console.log('\n❌ NOT VISIBLE TONIGHT:');
-		console.log('-'.repeat(70));
-		console.log(`  ${notVisible.map(t => t.name).join(', ')}`);
-		console.log();
-	}
-
-	console.log('='.repeat(70));
-
-	// Final recommendation based on weather
-	if (weatherConditions && weatherConditions.worthObserving) {
-		console.log('💡 TIP: Start with the highest-rated targets when you first go outside!');
-	} else if (weatherConditions && !weatherConditions.worthObserving) {
-		console.log('💡 TIP: Check back later - weather conditions may improve!');
-	} else {
-		console.log('💡 TIP: Start with the highest-rated targets when you first go outside!');
-	}
-
-	console.log('='.repeat(70));
+	console.log('='.repeat(50));
 }
 
 // Format hour for display
 function formatHourDisplay(hour) {
 	const displayHour = hour > 12 ? hour - 12 : (hour === 0 ? 12 : hour);
 	const period = hour >= 12 ? 'PM' : 'AM';
-	return `${displayHour}:00 ${period}`;
+	return `${displayHour}${period}`;
 }
 
 // Convert azimuth to compass direction
