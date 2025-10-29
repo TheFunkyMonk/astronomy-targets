@@ -1,7 +1,7 @@
 {
 	"name": "telescope-viewing-targets",
 	"version": "1.0.0",
-	"description": "Determine optimal telescope viewing targets based on your location and equipment",
+	"description": "Determine optimal telescope viewing targets based on your location, equipment, and weather conditions",
 	"main": "telescope-targets.js",
 	"scripts": {
 		"start": "node telescope-targets.js"
@@ -10,10 +10,14 @@
 		"astronomy",
 		"telescope",
 		"stargazing",
-		"planets"
+		"planets",
+		"weather"
 	],
 	"author": "",
 	"license": "MIT",
+	"engines": {
+		"node": ">=20.11.0"
+	},
 	"dependencies": {
 		"dotenv": "^16.3.1"
 	}

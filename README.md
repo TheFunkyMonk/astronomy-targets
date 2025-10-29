@@ -1,6 +1,18 @@
-# Telescope Viewing Targets Script
+# Telescope Viewing Targets
 
-A Node.js script that uses the Astronomy API to determine what celestial bodies are good viewing targets based on your location, time, and telescope capabilities.
+A Node.js script that uses the Astronomy API and 7timer weather data to determine what celestial bodies are good viewing targets based on your location, time, telescope capabilities, and current weather conditions.
+
+## Features
+
+- **Weather-Aware Planning**: Checks current atmospheric conditions (cloud cover, seeing, transparency) before recommending viewing sessions
+- **Smart Target Analysis**: Evaluates celestial objects throughout your evening viewing window
+- **Telescope-Specific Ratings**: Adjusts recommendations based on your equipment capabilities
+- **Detailed Viewing Information**: Provides optimal viewing times, directions, and reasons for each target
+
+## Requirements
+
+- Node.js v20.11 or higher
+- Astronomy API credentials (free tier available at https://astronomyapi.com)
 
 ## Setup
 
@@ -23,17 +35,25 @@ A Node.js script that uses the Astronomy API to determine what celestial bodies 
 ## Usage
 
 Run the script:
+
 ```bash
-node telescope-targets.js
-# or
 npm start
 ```
 
 The script will:
-- Analyze visibility throughout your configured evening time range
-- Show the best viewing time for each celestial body (when it's highest in the sky)
-- Rate each target based on overall visibility: Excellent, Good, Fair, Poor, or Not Visible
-- Provide helpful details like direction, constellation, magnitude, and how many hours it's visible
+
+1. **Check Weather Conditions** - Fetches real-time atmospheric data from 7timer including:
+   - Cloud cover forecast
+   - Atmospheric seeing (stability)
+   - Transparency
+   - Precipitation
+
+2. **Provide Viewing Recommendation** - Advises whether conditions are suitable for observing
+
+3. **Analyze Celestial Targets** - Shows visibility throughout your configured evening time range with:
+   - Best viewing time for each celestial body (when it's highest in the sky)
+   - Overall visibility rating: Excellent, Good, Fair, Poor, or Not Visible
+   - Direction, constellation, magnitude, and duration visible
 
 ## Telescope Levels
 
@@ -58,10 +78,24 @@ The script will:
 ======================================================================
 TELESCOPE VIEWING TARGETS
 ======================================================================
-Date: 2025-10-28
+Date: 2025-10-29
 Location: 47.6693552, -122.3891101 (15.24m elevation)
 Telescope: Entry-level telescope (60-80mm aperture)
 Time Range: 21:00 - 2:00
+======================================================================
+
+Checking weather conditions...
+
+🌤️  WEATHER CONDITIONS FOR TONIGHT:
+----------------------------------------------------------------------
+Overall Quality: GOOD
+Cloud Cover: 2/9 (1=clear, 9=overcast)
+Atmospheric Seeing: 5.5/8 (higher is better)
+Transparency: 3.5/8 (higher is better)
+Conditions: some clouds, average atmospheric stability
+
+✅ VIEWING RECOMMENDATION: GO OUTSIDE!
+Weather conditions are favorable for telescope viewing tonight.
 ======================================================================
 
 Analyzing celestial positions throughout the evening...
@@ -104,9 +138,32 @@ Uranus
 ======================================================================
 ```
 
+## Weather Condition Ratings
+
+The script evaluates weather conditions and provides one of these ratings:
+
+- **Excellent**: Clear skies, great seeing and transparency
+- **Good**: Mostly clear with good atmospheric conditions
+- **Fair**: Some clouds or average atmospheric conditions
+- **Poor**: Significant cloud cover or poor seeing
+- **Unsuitable**: Heavy clouds or precipitation expected
+
+## APIs Used
+
+- **Astronomy API** (https://astronomyapi.com) - Provides celestial body positions and data
+- **7timer** (https://www.7timer.info) - Free astronomical weather forecasting (no API key required)
+
 ## Tips
 
 - Objects rated "Excellent" or "Good" are your best bets
+- Check weather conditions before heading out - even great celestial positioning won't help if it's cloudy!
 - Magnitude scale: lower/negative numbers = brighter (easier to see)
 - Higher altitude = better viewing (less atmospheric distortion)
 - The Moon is always a great target for beginners!
+- If weather is poor, the script still shows what would be visible if conditions improve
+
+## Troubleshooting
+
+- **Weather data unavailable**: The script will continue without weather data and still show celestial targets
+- **No targets visible**: Check your evening time range configuration - you may need to adjust the hours
+- **All targets rated as poor**: Your telescope level might be too restrictive, or objects may be low on the horizon during your viewing window

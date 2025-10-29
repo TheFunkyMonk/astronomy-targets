@@ -33,6 +33,129 @@ const telescopeCapabilities = {
 	}
 };
 
+// Weather condition interpretation from 7timer
+function interpretWeatherConditions(data) {
+	const eveningData = data.dataseries.filter(point => {
+		const hour = (point.timepoint % 24);
+		// Filter for evening hours in our observation window
+		if (config.eveningEndHour > config.eveningStartHour) {
+			return hour >= config.eveningStartHour && hour <= config.eveningEndHour;
+		} else {
+			// Handle overnight periods (e.g., 21:00 to 02:00)
+			return hour >= config.eveningStartHour || hour <= config.eveningEndHour;
+		}
+	});
+
+	if (eveningData.length === 0) {
+		return null;
+	}
+
+	// Calculate average conditions for the evening
+	const avgCloudCover = eveningData.reduce((sum, d) => sum + d.cloudcover, 0) / eveningData.length;
+	const avgSeeing = eveningData.reduce((sum, d) => sum + d.seeing, 0) / eveningData.length;
+	const avgTransparency = eveningData.reduce((sum, d) => sum + d.transparency, 0) / eveningData.length;
+	const hasRain = eveningData.some(d => d.prec_type === 'rain' || d.prec_type === 'snow');
+
+	// Determine overall viewing quality
+	let quality = 'excellent';
+	let score = 0;
+	let reasons = [];
+
+	// Cloud cover assessment (1-9 scale, 1=clear)
+	if (avgCloudCover >= 7) {
+		score += 3;
+		reasons.push('heavy cloud cover');
+		quality = 'poor';
+	} else if (avgCloudCover >= 5) {
+		score += 2;
+		reasons.push('moderate cloud cover');
+		quality = quality === 'excellent' ? 'fair' : quality;
+	} else if (avgCloudCover >= 3) {
+		score += 1;
+		reasons.push('some clouds');
+		quality = quality === 'excellent' ? 'good' : quality;
+	} else {
+		reasons.push('clear skies');
+	}
+
+	// Seeing assessment (1-8 scale, higher is better)
+	if (avgSeeing <= 3) {
+		score += 2;
+		reasons.push('poor atmospheric stability');
+		quality = quality === 'excellent' ? 'fair' : (quality === 'good' ? 'fair' : quality);
+	} else if (avgSeeing <= 5) {
+		reasons.push('average atmospheric stability');
+	} else {
+		reasons.push('excellent atmospheric stability');
+	}
+
+	// Transparency assessment (1-8 scale, higher is better)
+	if (avgTransparency <= 3) {
+		score += 1;
+		reasons.push('reduced transparency');
+	} else if (avgTransparency >= 6) {
+		reasons.push('excellent transparency');
+	}
+
+	// Precipitation
+	if (hasRain) {
+		score += 4;
+		reasons.push('precipitation expected');
+		quality = 'unsuitable';
+	}
+
+	// Determine if it's worth going out
+	const worthObserving = quality !== 'unsuitable' && quality !== 'poor' && avgCloudCover < 6;
+
+	return {
+		quality,
+		score,
+		worthObserving,
+		avgCloudCover: Math.round(avgCloudCover),
+		avgSeeing: avgSeeing.toFixed(1),
+		avgTransparency: avgTransparency.toFixed(1),
+		hasRain,
+		reasons,
+		eveningData
+	};
+}
+
+// Get weather conditions from 7timer
+async function getWeatherConditions() {
+	const apiUrl = `https://www.7timer.info/bin/astro.php?` +
+		`lon=${config.longitude}&lat=${config.latitude}&ac=0&lang=en&unit=imperial&output=json&tzshift=0`;
+
+	try {
+		const parsedUrl = url.parse(apiUrl);
+
+		return new Promise((resolve, reject) => {
+			https.get({
+				hostname: parsedUrl.hostname,
+				path: parsedUrl.path,
+				method: 'GET'
+			}, (res) => {
+				let data = '';
+
+				res.on('data', (chunk) => {
+					data += chunk;
+				});
+
+				res.on('end', () => {
+					if (res.statusCode === 200) {
+						resolve(JSON.parse(data));
+					} else {
+						reject(new Error(`Weather API request failed with status ${res.statusCode}`));
+					}
+				});
+			}).on('error', (err) => {
+				reject(err);
+			});
+		});
+	} catch (error) {
+		throw new Error(`Failed to fetch weather data: ${error.message}`);
+	}
+}
+
 // Rating criteria for viewing quality
 function getViewingRating(body, telescope) {
 	const altitude = parseFloat(body.position.horizontal.altitude.degrees);
@@ -211,6 +334,42 @@ async function main() {
 	console.log('='.repeat(70));
 	console.log();
 
+	// Get weather conditions first
+	console.log('Checking weather conditions...\n');
+	let weatherConditions = null;
+
+	try {
+		const weatherData = await getWeatherConditions();
+		weatherConditions = interpretWeatherConditions(weatherData);
+
+		// Display weather summary
+		console.log('🌤️  WEATHER CONDITIONS FOR TONIGHT:');
+		console.log('-'.repeat(70));
+		console.log(`Overall Quality: ${weatherConditions.quality.toUpperCase()}`);
+		console.log(`Cloud Cover: ${weatherConditions.avgCloudCover}/9 (1=clear, 9=overcast)`);
+		console.log(`Atmospheric Seeing: ${weatherConditions.avgSeeing}/8 (higher is better)`);
+		console.log(`Transparency: ${weatherConditions.avgTransparency}/8 (higher is better)`);
+		if (weatherConditions.hasRain) {
+			console.log('⚠️  Precipitation: Expected');
+		}
+		console.log(`Conditions: ${weatherConditions.reasons.join(', ')}`);
+		console.log();
+
+		if (!weatherConditions.worthObserving) {
+			console.log('⚠️  VIEWING RECOMMENDATION: NOT RECOMMENDED');
+			console.log('Tonight\'s weather conditions are not suitable for telescope viewing.');
+			console.log('However, here\'s what would be visible in the sky if conditions improve:');
+		} else {
+			console.log('✅ VIEWING RECOMMENDATION: GO OUTSIDE!');
+			console.log('Weather conditions are favorable for telescope viewing tonight.');
+		}
+		console.log('='.repeat(70));
+		console.log();
+	} catch (error) {
+		console.log('⚠️  Warning: Could not fetch weather data:', error.message);
+		console.log('Continuing with celestial object analysis...\n');
+	}
+
 	// Generate hours to check
 	const hours = [];
 	let currentHour = config.eveningStartHour;
@@ -377,7 +536,16 @@ async function main() {
 	}
 
 	console.log('='.repeat(70));
-	console.log('💡 TIP: Start with the highest-rated targets when you first go outside!');
+
+	// Final recommendation based on weather
+	if (weatherConditions && weatherConditions.worthObserving) {
+		console.log('💡 TIP: Start with the highest-rated targets when you first go outside!');
+	} else if (weatherConditions && !weatherConditions.worthObserving) {
+		console.log('💡 TIP: Check back later - weather conditions may improve!');
+	} else {
+		console.log('💡 TIP: Start with the highest-rated targets when you first go outside!');
+	}
+
 	console.log('='.repeat(70));
 }
 
